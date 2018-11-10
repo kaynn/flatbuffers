@@ -201,8 +201,16 @@ class JsonSchemaGenerator : public BaseGenerator {
         enumdef.append("\"" + (*enum_value)->name + "\"");
         if (*enum_value != (*e)->vals.vec.back()) { enumdef.append(", "); }
       }
-      enumdef.append("]");
+      enumdef.append("],");
       code_ += enumdef;
+      std::string enumvalues("      \"enum_values\": [");
+      for (auto enum_value = (*e)->vals.vec.begin();
+        enum_value != (*e)->vals.vec.end(); ++enum_value) {
+        enumvalues.append(ToString((*enum_value)->value));
+        if (*enum_value != (*e)->vals.vec.back()) { enumvalues.append(", "); }
+      }
+      enumvalues.append("]");
+      code_ += enumvalues;
       code_ += "    },";  // close type
     }
     for (auto s = parser_.structs_.vec.cbegin();

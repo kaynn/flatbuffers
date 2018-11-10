@@ -368,7 +368,8 @@ class GeneralGenerator : public BaseGenerator {
   }
 
   // Casts necessary to correctly read serialized data
-  std::string DestinationCast(const Type &type) const {
+  std::string DestinationCast(const Type &type, 
+                              bool noCastInCSharp=false) const {
     if (type.base_type == BASE_TYPE_VECTOR) {
       return DestinationCast(type.VectorType());
     } else {
@@ -380,7 +381,9 @@ class GeneralGenerator : public BaseGenerator {
 
         case IDLOptions::kCSharp:
           // Cast from raw integral types to enum.
-          if (IsEnum(type)) return "(" + WrapInNameSpace(*type.enum_def) + ")";
+          if (IsEnum(type) && !noCastInCSharp) {
+            return "(" + WrapInNameSpace(*type.enum_def) + ")";
+          }
           break;
 
         default: break;
@@ -609,7 +612,7 @@ class GeneralGenerator : public BaseGenerator {
                                       const char *num = nullptr) const {
     auto type = key_field->value.type;
     auto dest_mask = DestinationMask(type, true);
-    auto dest_cast = DestinationCast(type);
+    auto dest_cast = DestinationCast(type, true);
     auto getter = data_buffer + "." + FunctionStart('G') + "et";
     if (GenTypeBasic(type, false) != "byte") {
       getter += MakeCamel(GenTypeBasic(type, false));

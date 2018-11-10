@@ -38,12 +38,35 @@ std::string GenNativeType(BaseType type) {
     case BASE_TYPE_INT:
     case BASE_TYPE_UINT:
     case BASE_TYPE_LONG:
-    case BASE_TYPE_ULONG:
+    case BASE_TYPE_ULONG:return "integer";
     case BASE_TYPE_FLOAT:
     case BASE_TYPE_DOUBLE: return "number";
     case BASE_TYPE_STRING: return "string";
     default: return "";
   }
+}
+
+template<typename T>
+std::string GenMinMax() {
+	std::stringstream ss;
+	ss << ", \"mininum\": " << (std::int64_t)std::numeric_limits<T>::min();
+	ss << ", \"maximum\": " << (std::int64_t)std::numeric_limits<T>::max();
+	auto s = ss.str();
+	return s;
+}
+
+
+std::string GetExtraInfo(BaseType type) {
+	switch (type) {
+	case BASE_TYPE_CHAR: return GenMinMax<std::int8_t>();    
+	case BASE_TYPE_UCHAR: return GenMinMax<std::uint8_t>();   
+	case BASE_TYPE_SHORT: return GenMinMax<std::int16_t>();   
+	case BASE_TYPE_USHORT: return GenMinMax<std::uint16_t>(); 
+	case BASE_TYPE_INT: return GenMinMax<std::int32_t>();     
+	case BASE_TYPE_UINT: return GenMinMax<std::uint32_t>(); 
+	default: return "";
+	}
+	
 }
 
 template<class T> std::string GenFullName(const T *enum_def) {
@@ -58,6 +81,36 @@ template<class T> std::string GenFullName(const T *enum_def) {
 
 template<class T> std::string GenTypeRef(const T *enum_def) {
   return "\"$ref\" : \"#/definitions/" + GenFullName(enum_def) + "\"";
+}
+
+struct IntegerInfo {
+  BaseType type;
+  std::int64_t minValue;
+  std::uint64_t maxValue;
+  const char* name() const {
+    return kTypeNames[type];
+  }
+} IntegerInfos[] = {
+  { BaseType::BASE_TYPE_CHAR, std::numeric_limits<std::int8_t>::min(), (std::uint64_t)std::numeric_limits<std::int8_t>::max() },
+  { BaseType::BASE_TYPE_UCHAR, std::numeric_limits<std::uint8_t>::min(), std::numeric_limits<std::uint8_t>::max() },
+
+  { BaseType::BASE_TYPE_SHORT, std::numeric_limits<std::int16_t>::min(), (std::uint64_t)std::numeric_limits<std::int16_t>::max() },
+  { BaseType::BASE_TYPE_USHORT, std::numeric_limits<std::uint16_t>::min(), std::numeric_limits<std::uint16_t>::max() },
+
+  { BaseType::BASE_TYPE_INT, std::numeric_limits<std::int32_t>::min(), (std::uint64_t)std::numeric_limits<std::int32_t>::max() },
+  { BaseType::BASE_TYPE_UINT, std::numeric_limits<std::uint32_t>::min(), std::numeric_limits<std::uint32_t>::max() },
+
+  { BaseType::BASE_TYPE_LONG, std::numeric_limits<std::int64_t>::min(), (std::uint64_t)std::numeric_limits<std::int64_t>::max() },
+  { BaseType::BASE_TYPE_ULONG, (std::int64_t)std::numeric_limits<std::uint64_t>::min(), std::numeric_limits<std::uint64_t>::max() },
+};
+
+std::string GenType(const std::string &name, BaseType type) {
+  for (auto p : IntegerInfos) {
+    if (p.type == type) {
+      return "\"$ref\" : \"#/definitions/" + std::string(p.name()) + "\"";
+    }
+  }
+  return "\"type\" : \"" + name + "\"";
 }
 
 std::string GenType(const std::string &name) {
@@ -76,7 +129,7 @@ std::string GenType(const Type &type) {
       if (type.element == BASE_TYPE_STRUCT) {
         typeline.append(GenTypeRef(type.struct_def));
       } else {
-        typeline.append(GenType(GenNativeType(type.element)));
+        typeline.append(GenType(GenNativeType(type.element), type.element));
       }
       typeline.append(" }");
       return typeline;
@@ -102,8 +155,16 @@ std::string GenType(const Type &type) {
       return union_type_string;
     }
     case BASE_TYPE_UTYPE: return GenTypeRef(type.enum_def);
-    default: return GenType(GenNativeType(type.base_type));
+    default: return GenType(GenNativeType(type.base_type), type.base_type);
   }
+}
+
+template<typename T>
+static std::string ToString(T val)
+{
+  std::stringstream ss;
+  ss << val;
+  return ss.str();
 }
 
 class JsonSchemaGenerator : public BaseGenerator {
@@ -123,6 +184,13 @@ class JsonSchemaGenerator : public BaseGenerator {
     code_ += "{";
     code_ += "  \"$schema\": \"http://json-schema.org/draft-04/schema#\",";
     code_ += "  \"definitions\": {";
+    for(auto prim : IntegerInfos) {
+      code_ += "    \"" + std::string(prim.name()) + "\" : {";
+      code_ += "      \"type\": \"integer\",";
+      code_ += "      \"minimum\": " + ToString(prim.minValue) + ",";
+      code_ += "      \"maximum\": " + ToString(prim.maxValue);
+      code_ += "    },";  // close type
+    }
     for (auto e = parser_.enums_.vec.cbegin(); e != parser_.enums_.vec.cend();
          ++e) {
       code_ += "    \"" + GenFullName(*e) + "\" : {";

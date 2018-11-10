@@ -16,6 +16,8 @@
 
 #include "flatbuffers/util.h"
 
+#include <vector>
+
 namespace flatbuffers {
 
 bool FileExistsRaw(const char *name) {
@@ -83,6 +85,34 @@ FileExistsFunction SetFileExistsFunction(
   g_file_exists_function =
       file_exists_function ? file_exists_function : FileExistsRaw;
   return previous_function;
+}
+
+bool SaveFile(const char *name, const char *buf, size_t len, bool binary) {
+  std::string tmp = std::string(name) + ".tmp";
+	std::ofstream ofs(tmp, binary ? std::ofstream::binary : std::ofstream::out);
+	if (!ofs.is_open()) return false;
+	ofs.write(buf, len);
+	if (ofs.bad())
+		return false;
+  ofs.close();
+    
+  std::ifstream ifs(name, binary ? std::ifstream::binary : std::ofstream::in);
+  if (ifs.is_open()) {
+    ifs.seekg(0, std::ios::end);
+    size_t size = (size_t)ifs.tellg();
+    if (size == len) {
+      ifs.seekg(0, std::ios::beg);
+      std::vector<char> buff(size);
+      ifs.read(&buff[0], buff.size());
+      if (memcmp(buf, &buff[0], len) == 0) {
+        remove(tmp.c_str());
+      } else {
+        remove(name);
+        rename(tmp.c_str(), name);
+      }
+    }
+  }
+	return true;
 }
 
 }  // namespace flatbuffers

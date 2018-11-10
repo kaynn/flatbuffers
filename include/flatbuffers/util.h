@@ -417,13 +417,7 @@ bool LoadFile(const char *name, bool binary, std::string *buf);
 // If "binary" is false data is written using ifstream's
 // text mode, otherwise data is written with no
 // transcoding.
-inline bool SaveFile(const char *name, const char *buf, size_t len,
-                     bool binary) {
-  std::ofstream ofs(name, binary ? std::ofstream::binary : std::ofstream::out);
-  if (!ofs.is_open()) return false;
-  ofs.write(buf, len);
-  return !ofs.bad();
-}
+bool SaveFile(const char *name, const char *buf, size_t len, bool binary);
 
 // Save data "buf" into file "name" returning true if
 // successful, false otherwise.  If "binary" is false

@@ -94,24 +94,26 @@ bool SaveFile(const char *name, const char *buf, size_t len, bool binary) {
 	ofs.write(buf, len);
 	if (ofs.bad())
 		return false;
+  auto tmp_len = ofs.tellp();
   ofs.close();
     
   std::ifstream ifs(name, binary ? std::ifstream::binary : std::ofstream::in);
   if (ifs.is_open()) {
     ifs.seekg(0, std::ios::end);
-    size_t size = (size_t)ifs.tellg();
-    if (size == len) {
+    auto size = ifs.tellg();
+    if (size == tmp_len) {
       ifs.seekg(0, std::ios::beg);
-      std::vector<char> buff(size);
+      std::vector<char> buff((size_t)size);
       ifs.read(&buff[0], buff.size());
       if (memcmp(buf, &buff[0], len) == 0) {
         remove(tmp.c_str());
+        return true;
       } else {
         remove(name);
-        rename(tmp.c_str(), name);
       }
     }
   }
+  rename(tmp.c_str(), name);
 	return true;
 }
 

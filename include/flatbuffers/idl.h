@@ -287,6 +287,13 @@ struct StructDef : public Definition {
     bytesize += padding;
     if (fields.vec.size()) fields.vec.back()->padding = padding;
   }
+  const FieldDef* GetKeyField() const {
+    for (const auto& field : fields.vec) {
+      if(field->key)
+        return field;
+    }
+    return nullptr;
+  }
 
   Offset<reflection::Object> Serialize(FlatBufferBuilder *builder,
                                        const Parser &parser) const;

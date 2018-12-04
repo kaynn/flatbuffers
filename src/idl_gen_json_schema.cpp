@@ -38,7 +38,7 @@ std::string GenNativeType(BaseType type) {
     case BASE_TYPE_INT:
     case BASE_TYPE_UINT:
     case BASE_TYPE_LONG:
-    case BASE_TYPE_ULONG:return "integer";
+    case BASE_TYPE_ULONG: return "integer";
     case BASE_TYPE_FLOAT:
     case BASE_TYPE_DOUBLE: return "number";
     case BASE_TYPE_STRING: return "string";
@@ -79,8 +79,8 @@ template<class T> std::string GenFullName(const T *enum_def) {
   return full_name;
 }
 
-template<class T> std::string GenTypeRef(const T *enum_def) {
-  return "\"$ref\" : \"#/definitions/" + GenFullName(enum_def) + "\"";
+template<class T> std::string GenTypeRef(const T *enum_def, const char* suffix="") {
+  return "\"$ref\" : \"#/definitions/" + GenFullName(enum_def) + suffix + "\"";
 }
 
 struct IntegerInfo {
@@ -138,21 +138,8 @@ std::string GenType(const Type &type) {
       return GenTypeRef(type.struct_def);
     }
     case BASE_TYPE_UNION: {
-      std::string union_type_string("\"anyOf\": [");
-      const auto &union_types = type.enum_def->vals.vec;
-      for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
-        auto &union_type = *ut;
-        if (union_type->union_type.base_type == BASE_TYPE_NONE) { continue; }
-        if (union_type->union_type.base_type == BASE_TYPE_STRUCT) {
-          union_type_string.append(
-              "{ " + GenTypeRef(union_type->union_type.struct_def) + " }");
-        }
-        if (union_type != *type.enum_def->vals.vec.rbegin()) {
-          union_type_string.append(",");
-        }
-      }
-      union_type_string.append("]");
-      return union_type_string;
+      return GenTypeRef(type.enum_def, "Union");
+
     }
     case BASE_TYPE_UTYPE: return GenTypeRef(type.enum_def);
     default: return GenType(GenNativeType(type.base_type), type.base_type);
@@ -212,6 +199,25 @@ class JsonSchemaGenerator : public BaseGenerator {
       enumvalues.append("]");
       code_ += enumvalues;
       code_ += "    },";  // close type
+      if ((*e)->is_union) {
+        auto& enum_def = **e;
+        code_ += "    \"" + GenFullName(*e) + "Union" + "\" : {";
+        code_ += "      \"anyOf\": [";
+        const auto &union_types = enum_def.vals.vec;
+        for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
+          auto &union_type = *ut;
+          if (union_type->union_type.base_type == BASE_TYPE_NONE) { continue; }
+          if (union_type->union_type.base_type == BASE_TYPE_STRUCT) {
+            std::string elem("        { " + GenTypeRef(union_type->union_type.struct_def) + " }");
+            if (union_type != *enum_def.vals.vec.rbegin()) {
+              elem += ",";
+            }
+            code_ += elem;
+          }
+        }
+        code_ += "    ]";
+        code_ += "    },";  // close type
+      }
     }
     for (auto s = parser_.structs_.vec.cbegin();
          s != parser_.structs_.vec.cend(); ++s) {
@@ -238,7 +244,10 @@ class JsonSchemaGenerator : public BaseGenerator {
         code_ += typeLine;
       }
       code_ += "      },";  // close properties
-
+      if (structure->has_key) {
+        std::string keyLine("      \"key\" : \""+structure->GetKeyField()->name + "\",");
+        code_ += keyLine;
+      }
       std::vector<FieldDef *> requiredProperties;
       std::copy_if(properties.begin(), properties.end(),
                    back_inserter(requiredProperties),

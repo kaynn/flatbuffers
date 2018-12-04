@@ -215,7 +215,7 @@ class JsonSchemaGenerator : public BaseGenerator {
             code_ += elem;
           }
         }
-        code_ += "    ]";
+        code_ += "      ]";
         code_ += "    },";  // close type
       }
     }

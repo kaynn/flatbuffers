@@ -108,10 +108,10 @@ bool SaveFile(const char *name, const char *buf, size_t len, bool binary) {
       if (memcmp(buf, &buff[0], len) == 0) {
         remove(tmp.c_str());
         return true;
-      } else {
-        remove(name);
       }
     }
+    ifs.close();
+    remove(name);
   }
   rename(tmp.c_str(), name);
 	return true;

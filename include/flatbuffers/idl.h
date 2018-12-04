@@ -388,6 +388,7 @@ struct IDLOptions {
   bool include_dependence_headers;
   bool mutable_buffer;
   bool one_file;
+  bool csharp_partial;
   bool proto_mode;
   bool proto_oneof_union;
   bool generate_all;
@@ -605,6 +606,7 @@ class Parser : public ParserState {
     known_attributes_["original_order"] = true;
     known_attributes_["nested_flatbuffer"] = true;
     known_attributes_["csharp_partial"] = true;
+    known_attributes_["csharp_interface"] = true;
     known_attributes_["streaming"] = true;
     known_attributes_["idempotent"] = true;
     known_attributes_["cpp_type"] = true;

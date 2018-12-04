@@ -1483,6 +1483,8 @@ CheckedError Parser::ParseSingleValue(const std::string *name, Value &e,
     // Unknown tokens will be interpreted as string type.
     TRY_ECHECK(true, kTokenStringConstant, e.type.base_type == BASE_TYPE_STRING,
                BASE_TYPE_STRING);
+    // special case for csharp interface
+    TRY_ECHECK(false, kTokenStringOrIdent, name != nullptr && *name == "csharp_interface", BASE_TYPE_STRING);
   } else {
     // Try a float number.
     TRY_ECHECK(false, kTokenFloatConstant, IsFloat(e.type.base_type),

@@ -86,6 +86,7 @@ std::string FlatCompiler::GetUsageString(const char *program_name) const {
     "                     schemas the generated file depends on (C++).\n"
     "  --gen-mutable      Generate accessors that can mutate buffers in-place.\n"
     "  --gen-onefile      Generate single output file for C# and Go.\n"
+    "  --csharp-partial   Generate partial structs for C#.\n"
     "  --gen-name-strings Generate type name functions for C++.\n"
     "  --gen-object-api   Generate an additional object-based API.\n"
     "  --gen-compare      Generate operator== for object-based API types.\n"
@@ -252,6 +253,8 @@ int FlatCompiler::Compile(int argc, const char **argv) {
         opts.include_dependence_headers = false;
       } else if (arg == "--gen-onefile") {
         opts.one_file = true;
+      } else if (arg == "--csharp-partial") {
+        opts.csharp_partial = true;
       } else if (arg == "--raw-binary") {
         raw_binary = true;
       } else if (arg == "--size-prefixed") {

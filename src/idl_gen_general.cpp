@@ -801,7 +801,7 @@ class GeneralGenerator : public BaseGenerator {
       code += "public ";
     }
     if (lang_.language == IDLOptions::kCSharp &&
-        struct_def.attributes.Lookup("csharp_partial")) {
+        (struct_def.attributes.Lookup("csharp_partial") || parser_.opts.csharp_partial)) {
       // generate a partial class for this C# struct/table
       code += "partial ";
     } else {
@@ -809,7 +809,13 @@ class GeneralGenerator : public BaseGenerator {
     }
     code += lang_.accessor_type + struct_def.name;
     if (lang_.language == IDLOptions::kCSharp) {
-      code += " : IFlatbufferObject";
+      std::string interfaces(" : IFlatbufferObject");
+      for (const auto& it : struct_def.attributes.dict) {
+        if (it.first == "csharp_interface") {
+          interfaces += ", " + it.second->constant;
+        }
+      }
+      code += interfaces;
       code += lang_.open_curly;
       code += "  private ";
       code += struct_def.fixed ? "Struct" : "Table";

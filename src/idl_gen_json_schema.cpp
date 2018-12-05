@@ -115,7 +115,7 @@ std::string GenType(const Type &type) {
     // it is a reference to an enum type
     if (type.base_type == BASE_TYPE_VECTOR) {
       std::string typeline;
-      typeline.append("\"type\" : \"array\",  " + GenTypeRef(type.enum_def));
+      typeline.append("\"type\" : \"array\", \"items\" : { " + GenTypeRef(type.enum_def) + " }");
       return typeline;
     } else {
       return GenTypeRef(type.enum_def);

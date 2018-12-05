@@ -46,29 +46,6 @@ std::string GenNativeType(BaseType type) {
   }
 }
 
-template<typename T>
-std::string GenMinMax() {
-	std::stringstream ss;
-	ss << ", \"mininum\": " << (std::int64_t)std::numeric_limits<T>::min();
-	ss << ", \"maximum\": " << (std::int64_t)std::numeric_limits<T>::max();
-	auto s = ss.str();
-	return s;
-}
-
-
-std::string GetExtraInfo(BaseType type) {
-	switch (type) {
-	case BASE_TYPE_CHAR: return GenMinMax<std::int8_t>();    
-	case BASE_TYPE_UCHAR: return GenMinMax<std::uint8_t>();   
-	case BASE_TYPE_SHORT: return GenMinMax<std::int16_t>();   
-	case BASE_TYPE_USHORT: return GenMinMax<std::uint16_t>(); 
-	case BASE_TYPE_INT: return GenMinMax<std::int32_t>();     
-	case BASE_TYPE_UINT: return GenMinMax<std::uint32_t>(); 
-	default: return "";
-	}
-	
-}
-
 template<class T> std::string GenFullName(const T *enum_def) {
   std::string full_name;
   const auto &name_spaces = enum_def->defined_namespace->components;
@@ -104,11 +81,27 @@ struct IntegerInfo {
   { BaseType::BASE_TYPE_ULONG, (std::int64_t)std::numeric_limits<std::uint64_t>::min(), std::numeric_limits<std::uint64_t>::max() },
 };
 
+struct DecimalInfo {
+	BaseType type;
+	int bits;
+	const char* name() const {
+		return kTypeNames[type];
+	}
+} DecimalInfos[] = {
+  { BaseType::BASE_TYPE_FLOAT, 32 },
+  { BaseType::BASE_TYPE_DOUBLE, 64 },
+};
+
 std::string GenType(const std::string &name, BaseType type) {
   for (auto p : IntegerInfos) {
     if (p.type == type) {
       return "\"$ref\" : \"#/definitions/" + std::string(p.name()) + "\"";
     }
+  }
+  for (auto p : DecimalInfos) {
+	  if (p.type == type) {
+		  return "\"$ref\" : \"#/definitions/" + std::string(p.name()) + "\"";
+	  }
   }
   return "\"type\" : \"" + name + "\"";
 }
@@ -120,7 +113,13 @@ std::string GenType(const std::string &name) {
 std::string GenType(const Type &type) {
   if (type.enum_def != nullptr && !type.enum_def->is_union) {
     // it is a reference to an enum type
-    return GenTypeRef(type.enum_def);
+    if (type.base_type == BASE_TYPE_VECTOR) {
+      std::string typeline;
+      typeline.append("\"type\" : \"array\",  " + GenTypeRef(type.enum_def));
+      return typeline;
+    } else {
+      return GenTypeRef(type.enum_def);
+    }
   }
   switch (type.base_type) {
     case BASE_TYPE_VECTOR: {
@@ -178,6 +177,12 @@ class JsonSchemaGenerator : public BaseGenerator {
       code_ += "      \"maximum\": " + ToString(prim.maxValue);
       code_ += "    },";  // close type
     }
+	for (auto prim : DecimalInfos) {
+		code_ += "    \"" + std::string(prim.name()) + "\" : {";
+		code_ += "      \"type\": \"number\",";
+		code_ += "      \"bits\": " + ToString(prim.bits);
+		code_ += "    },";  // close type
+	}
     for (auto e = parser_.enums_.vec.cbegin(); e != parser_.enums_.vec.cend();
          ++e) {
       code_ += "    \"" + GenFullName(*e) + "\" : {";

@@ -245,9 +245,12 @@ class JsonSchemaGenerator : public BaseGenerator {
       }
       code_ += "      },";  // close properties
       if (structure->has_key) {
-        std::string keyLine("      \"key\" : \""+structure->GetKeyField()->name + "\",");
+        std::string keyLine("      \"key\" : \"" + structure->GetKeyField()->name + "\",");
         code_ += keyLine;
       }
+	  if (structure->fixed) {
+		  code_ += "      \"struct\" : true,";
+	  }
       std::vector<FieldDef *> requiredProperties;
       std::copy_if(properties.begin(), properties.end(),
                    back_inserter(requiredProperties),

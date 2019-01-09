@@ -76,6 +76,7 @@ std::string FlatCompiler::GetUsageString(const char *program_name) const {
     "  --unknown-json     Allow fields in JSON that are not defined in the\n"
     "                     schema. These fields will be discared when generating\n"
     "                     binaries.\n"
+    "  --gen-dependencies Generate fbs dependency (.d) file for makefiles.\n"
     "  --no-prefix        Don\'t prefix enum values with the enum type in C++.\n"
     "  --scoped-enums     Use C++11 style scoped and strongly typed enums.\n"
     "                     also implies --no-prefix.\n"
@@ -135,6 +136,35 @@ std::string FlatCompiler::GetUsageString(const char *program_name) const {
     "example: " << program_name << " -c -b schema1.fbs schema2.fbs data.json\n";
   // clang-format on
   return ss.str();
+}
+
+void ParseDependencyFile(std::set<std::string>& used, 
+  const std::string& current, 
+  const std::map<std::string, std::set<std::string>>& files) {
+  if (files.find(current) != files.end() && 
+    used.find(current) == used.end()) {
+    auto &fileSet =
+      (*const_cast<std::map<std::string, std::set<std::string>> *>(
+        &files))[current];
+    for (const auto& it : fileSet) {
+      used.insert(it);
+      ParseDependencyFile(used, it, files);
+    }
+  }
+}
+
+void GenerateDependencyFile(const std::string& filename, 
+  const std::map<std::string, std::set<std::string>>& files) {
+  std::set<std::string> used;
+  ParseDependencyFile(used, filename, files);
+  used.insert(filename);
+  std::stringstream ss;
+  for (const auto& it : used) {
+    ss << it << "\n";
+  }
+
+  std::string depfilename = StripExtension(filename) + ".d";
+  SaveFile(depfilename.c_str(), ss.str(), false);
 }
 
 int FlatCompiler::Compile(int argc, const char **argv) {
@@ -212,6 +242,8 @@ int FlatCompiler::Compile(int argc, const char **argv) {
         opts.output_default_scalars_in_json = true;
       } else if (arg == "--unknown-json") {
         opts.skip_unexpected_fields_in_json = true;
+      } else if (arg == "--gen-dependencies") {
+        opts.generate_dependencies = true;
       } else if (arg == "--no-prefix") {
         opts.prefixed_enums = false;
       } else if (arg == "--scoped-enums") {
@@ -389,6 +421,9 @@ int FlatCompiler::Compile(int argc, const char **argv) {
       if (is_schema && !conform_to_schema.empty()) {
         auto err = parser->ConformTo(conform_parser);
         if (!err.empty()) Error("schemas don\'t conform: " + err);
+      }
+      if (opts.generate_dependencies) {
+        GenerateDependencyFile(filename, parser->files_included_per_file_);
       }
       if (schema_binary) {
         parser->Serialize();

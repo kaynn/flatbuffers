@@ -160,7 +160,7 @@ void GenerateDependencyFile(const std::string& filename,
   used.insert(filename);
   std::stringstream ss;
   for (const auto& it : used) {
-    ss << it << "\n";
+    ss << AbsolutePath(it) << "\n";
   }
 
   std::string depfilename = StripExtension(filename) + ".d";

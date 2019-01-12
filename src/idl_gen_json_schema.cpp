@@ -164,7 +164,10 @@ class JsonSchemaGenerator : public BaseGenerator {
 
   explicit JsonSchemaGenerator(const BaseGenerator &base_generator)
       : BaseGenerator(base_generator) {}
-
+  bool isExclusive(const std::string& path) const {
+	  std::string refPath = "/" + file_name_ + ".fbs";
+	  return path.find(refPath) != std::string::npos;
+  }
   bool generate() {
     code_.Clear();
     code_ += "{";
@@ -187,6 +190,8 @@ class JsonSchemaGenerator : public BaseGenerator {
          ++e) {
       code_ += "    \"" + GenFullName(*e) + "\" : {";
       code_ += "      " + GenType("string") + ",";
+	  code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive((*e)->file) ? "true" : "false") + ",";
+	  code_ += "      \"namespace\" : \"" + (*e)->GetFullyQualifiedNamespace() + "\",";
       std::string enumdef("      \"enum\": [");
       for (auto enum_value = (*e)->vals.vec.begin();
            enum_value != (*e)->vals.vec.end(); ++enum_value) {
@@ -204,10 +209,12 @@ class JsonSchemaGenerator : public BaseGenerator {
       enumvalues.append("]");
       code_ += enumvalues;
       code_ += "    },";  // close type
+
       if ((*e)->is_union) {
         auto& enum_def = **e;
         code_ += "    \"" + GenFullName(*e) + "Union" + "\" : {";
-        code_ += "      \"anyOf\": [";
+		code_ += "      \"namespace\" : \"" + (*e)->GetFullyQualifiedNamespace() + "\",";
+		code_ += "      \"anyOf\": [";
         const auto &union_types = enum_def.vals.vec;
         for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
           auto &union_type = *ut;
@@ -229,6 +236,8 @@ class JsonSchemaGenerator : public BaseGenerator {
       const auto &structure = *s;
       code_ += "    \"" + GenFullName(structure) + "\" : {";
       code_ += "      " + GenType("object") + ",";
+	  code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive(structure->file) ? "true" : "false") + ",";
+	  code_ += "      \"namespace\" : \"" + structure->GetFullyQualifiedNamespace() + "\",";
       std::string comment;
       const auto &comment_lines = structure->doc_comment;
       for (auto comment_line = comment_lines.cbegin();
@@ -272,7 +281,8 @@ class JsonSchemaGenerator : public BaseGenerator {
         required_string.append("],");
         code_ += required_string;
       }
-      code_ += "      \"additionalProperties\" : false";
+	  code_ += "      \"additionalProperties\" : false";
+	  
       std::string closeType("    }");
       if (*s != parser_.structs_.vec.back()) { closeType.append(","); }
       code_ += closeType;  // close type

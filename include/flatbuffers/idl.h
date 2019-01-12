@@ -234,6 +234,11 @@ struct Definition {
   flatbuffers::Offset<
       flatbuffers::Vector<flatbuffers::Offset<reflection::KeyValue>>>
   SerializeAttributes(FlatBufferBuilder *builder, const Parser &parser) const;
+  std::string GetFullyQualifiedNamespace() const {
+    return defined_namespace == nullptr ? std
+      ::string() : 
+      defined_namespace->GetFullyQualifiedName("");
+  }
 
   std::string name;
   std::string file;
@@ -376,6 +381,7 @@ struct ServiceDef : public Definition {
 
 // Container of options that may apply to any of the source/text generators.
 struct IDLOptions {
+  bool generate_dependencies;
   bool strict_json;
   bool skip_js_exports;
   bool use_goog_js_export_format;
@@ -454,6 +460,7 @@ struct IDLOptions {
 
   IDLOptions()
       : strict_json(false),
+        generate_dependencies(false),
         skip_js_exports(false),
         use_goog_js_export_format(false),
         use_ES6_js_export_format(false),

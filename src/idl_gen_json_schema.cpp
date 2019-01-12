@@ -164,7 +164,10 @@ class JsonSchemaGenerator : public BaseGenerator {
 
   explicit JsonSchemaGenerator(const BaseGenerator &base_generator)
       : BaseGenerator(base_generator) {}
-
+  bool isExclusive(const std::string& path) const {
+	  std::string refPath = "/" + file_name_ + ".fbs";
+	  return path.find(refPath) != std::string::npos;
+  }
   bool generate() {
     code_.Clear();
     code_ += "{";
@@ -221,6 +224,7 @@ class JsonSchemaGenerator : public BaseGenerator {
           }
         }
         code_ += "      ]";
+		code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive((*e)->file) ? "true" : "false");
         code_ += "    },";  // close type
       }
     }
@@ -272,7 +276,9 @@ class JsonSchemaGenerator : public BaseGenerator {
         required_string.append("],");
         code_ += required_string;
       }
-      code_ += "      \"additionalProperties\" : false";
+	  code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive(structure->file) ? "true" : "false") + ",";
+	  code_ += "      \"additionalProperties\" : false";
+	  
       std::string closeType("    }");
       if (*s != parser_.structs_.vec.back()) { closeType.append(","); }
       code_ += closeType;  // close type

@@ -1505,9 +1505,169 @@ class GeneralGenerator : public BaseGenerator {
 };
 }  // namespace general
 
+namespace csharp {
+  class CodeWriter {
+    typedef const std::string& cstringref;
+    typedef const std::string* cstringptr;
+    struct Indent {
+      Indent() : size_(4), char_(' ') {}
+      Indent(char c = ' ', int size = 4) : size_(size), char_(c) {}
+
+      char char_;
+      size_t size_;
+    };
+
+    std::string filename_;
+    const Indent indent_;
+    size_t indentSize_;
+    std::string currentIndent_;
+  public:
+    static const std::string endl;
+    std::stringstream ss_;
+    class Scope {
+      CodeWriter& codeWriter_;
+      bool withSemiColon_;
+    public:
+      Scope(CodeWriter& cw, bool withSemiColon)
+        : codeWriter_(cw)
+        , withSemiColon_(withSemiColon)
+      {
+        cw.WriteLine("{");
+        cw.addIndent();
+      }
+      ~Scope() {
+        codeWriter_.subIndent();
+        if (withSemiColon_)
+          codeWriter_.WriteLine("};");
+        else
+          codeWriter_.WriteLine("}");
+      }
+    };
+
+    CodeWriter(cstringref filename, char indent = ' ', int indentSize = 4)
+      : filename_(filename)
+      , indent_(indent, indentSize)
+      , indentSize_(0)
+    {}
+    ~CodeWriter() {
+      SaveFile(filename_.c_str(), ss_.str(), false);
+    }
+
+    void addIndent() {
+      indentSize_ += indent_.size_;
+      currentIndent_ = std::string(indentSize_, indent_.char_);
+    }
+    void subIndent() {
+      indentSize_ -= indent_.size_;
+      currentIndent_ = std::string(indentSize_, indent_.char_);
+    }
+    Scope PushScope(bool withSemiColon) {
+      return Scope(*this, withSemiColon);
+    }
+    Scope PushNamespace(cstringref ns) {
+      WriteLine("namespace {}.rw", ns);
+      return PushScope(false);
+    }
+
+    Scope WriteLineAndPushScope(bool withSemiColon, cstringref line) {
+      WriteLine(line);
+      return Scope(*this, withSemiColon);
+    }
+
+    void WriteLine() {
+      ss_ << std::endl;
+    }
+
+    void WriteLine(cstringref line) {
+      ss_ << currentIndent_ << line << std::endl;
+    }
+    template<size_t N>
+    void WriteLine(cstringref fmt, cstringptr(&args)[N]) {
+      std::stringstream ss;
+      size_t off = 0;
+      size_t argIndex = 0;
+      while (true) {
+        auto match = fmt.find("{}", off);
+        if (match == std::string::npos) {
+          ss << fmt.substr(off);
+          break;
+        }
+        ss << fmt.substr(off, match - off);
+        ss << *(args[argIndex++]);
+        off = match + 2;
+      }
+      WriteLine(ss.str());
+    }
+    void WriteLine(cstringref fmt, cstringref a0) {
+      cstringptr args[] = { &a0 };
+      WriteLine(fmt, args);
+    }
+    void WriteLine(cstringref fmt, cstringref a0, cstringref a1) {
+      cstringptr args[] = { &a0, &a1 };
+      WriteLine(fmt, args);
+    }
+    void WriteLine(cstringref fmt, cstringref a0, cstringref a1, cstringref a2) {
+      cstringptr args[] = { &a0, &a1, &a2 };
+      WriteLine(fmt, args);
+    }
+    void WriteLine(cstringref fmt, cstringref a0, cstringref a1, cstringref a2, cstringref a3) {
+      cstringptr args[] = { &a0, &a1, &a2, &a3 };
+      WriteLine(fmt, args);
+    }
+
+    friend CodeWriter& operator<<(CodeWriter& cw, const std::string& s);
+  };
+  const std::string CodeWriter::endl("\n");
+
+  CodeWriter& operator<<(CodeWriter& cw, const std::string& s) {
+    cw.WriteLine(s);
+    return cw;
+  }
+
+  class CSharpGenerator : public general::GeneralGenerator {
+  public:
+    CSharpGenerator(const Parser &parser, const std::string &path,
+      const std::string &file_name)
+      : GeneralGenerator(parser, path, file_name) {}
+
+    CSharpGenerator &operator=(const CSharpGenerator &);
+    bool generate() {
+      CodeWriter cw(file_name_ + ".rw.cs");
+      cw.WriteLine("//this file is generated, do not modify!");
+      cw.WriteLine("using System;");
+      cw.WriteLine("using System.Collections.Generic;");
+      cw.WriteLine("using System.Linq;");
+      cw.WriteLine("using FlatBuffers;");
+      cw.WriteLine();
+
+      for (auto it = parser_.enums_.vec.begin(); it != parser_.enums_.vec.end();
+        ++it) {
+        auto &enum_def = **it;
+      }
+
+      for (auto it = parser_.structs_.vec.begin();
+        it != parser_.structs_.vec.end(); ++it) {
+        auto &struct_def = **it;
+        {
+          auto s = cw.PushNamespace(struct_def.GetFullyQualifiedNamespace());
+          cw.WriteLine("public partial class {}", struct_def.name);
+          {
+            auto s1 = cw.PushScope(true);
+            for (const auto& field : struct_def.fields.vec) {
+              cw.WriteLine("{} {} {} {}", field->name, field->name, field->name, field->name);
+            }
+          }
+          cw.WriteLine();
+        }
+      }
+      return true;
+    }
+  };
+}
+
 bool GenerateGeneral(const Parser &parser, const std::string &path,
                      const std::string &file_name) {
-  general::GeneralGenerator generator(parser, path, file_name);
+  csharp::CSharpGenerator generator(parser, path, file_name);
   return generator.generate();
 }
 

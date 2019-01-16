@@ -235,9 +235,14 @@ struct Definition {
       flatbuffers::Vector<flatbuffers::Offset<reflection::KeyValue>>>
   SerializeAttributes(FlatBufferBuilder *builder, const Parser &parser) const;
   std::string GetFullyQualifiedNamespace() const {
-    return defined_namespace == nullptr ? std
-      ::string() : 
+    return defined_namespace == nullptr ? 
+      std::string() :
       defined_namespace->GetFullyQualifiedName("");
+  }
+  std::string GetFullyQualifiedName() const {
+    return defined_namespace == nullptr ? 
+      name :
+      defined_namespace->GetFullyQualifiedName(name);
   }
 
   std::string name;

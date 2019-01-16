@@ -1505,34 +1505,113 @@ class GeneralGenerator : public BaseGenerator {
 };
 }  // namespace general
 
+namespace fmt {
+  typedef std::string string;
+  typedef const std::string& cstringref;
+  typedef const std::string* cstringptr;
+
+  inline bool ends_with(cstringref value, cstringref ending) {
+    if (ending.size() > value.size()) return false;
+    return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+  }
+
+  inline string replace(cstringref s, cstringref from, cstringref to) {
+    string str = s;
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+      str.replace(start_pos, from.length(), to);
+      start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+    }
+    return str;
+  }
+
+  template<size_t N>
+  string format(cstringref fmt, cstringptr(&args)[N]) {
+    const auto npos = std::string::npos;
+    std::stringstream ss;
+    size_t off = 0;
+    size_t argIndex = 0;
+    while (true) {
+      auto match = npos;
+      auto start_find = off;
+      while (true) {
+        match = fmt.find("{", start_find);
+        if (match != npos && match < fmt.length() && fmt[match + 1] == '{') {
+          start_find = match + 2;
+        }
+        else
+          break;
+      }
+      if (match == npos) {
+        if(off != npos)
+          ss << fmt.substr(off);
+        break;
+      }
+      auto end_match = fmt.find("}", match);
+      if (end_match != npos) {
+        ss << fmt.substr(off, match - off);
+        ss << *(args[argIndex++]);
+        off = end_match + 1;
+      }
+      else {
+        off = end_match;
+      }
+    }
+    auto s = ss.str();
+    s = replace(s, "{{", "{"); 
+    s = replace(s, "}}", "}");
+    return s;
+  }
+  
+  inline cstringref format(cstringref fmt) {
+    return fmt;
+  }
+  inline string format(cstringref fmt, cstringref a0) {
+    cstringptr args[] = { &a0 };
+    return format(fmt, args);
+  }
+  inline string format(cstringref fmt, cstringref a0, cstringref a1) {
+    cstringptr args[] = { &a0, &a1 };
+    return format(fmt, args);
+  }
+  inline string format(cstringref fmt, cstringref a0, cstringref a1, cstringref a2) {
+    cstringptr args[] = { &a0, &a1, &a2 };
+    return format(fmt, args);
+  }
+  inline string format(cstringref fmt, cstringref a0, cstringref a1, cstringref a2, cstringref a3) {
+    cstringptr args[] = { &a0, &a1, &a2, &a3 };
+    return format(fmt, args);
+  }
+}
+
 namespace csharp {
   class CodeWriter {
     typedef const std::string& cstringref;
     typedef const std::string* cstringptr;
-    struct Indent {
-      Indent() : size_(4), char_(' ') {}
-      Indent(char c = ' ', int size = 4) : size_(size), char_(c) {}
-
-      char char_;
-      size_t size_;
-    };
 
     std::string filename_;
-    const Indent indent_;
-    size_t indentSize_;
+    std::string indent_;
     std::string currentIndent_;
-  public:
-    static const std::string endl;
+    bool sameLineSemiColon_;
+    bool isNewLine_;
     std::stringstream ss_;
+  public:
+    
     class Scope {
       CodeWriter& codeWriter_;
       bool withSemiColon_;
     public:
-      Scope(CodeWriter& cw, bool withSemiColon)
+      Scope(CodeWriter& cw, bool withSemiColon, bool sameLineSemiColon = false)
         : codeWriter_(cw)
         , withSemiColon_(withSemiColon)
       {
-        cw.WriteLine("{");
+        if (sameLineSemiColon) {
+          cw.WriteLine(" {");
+        }
+        else {
+          cw.WriteLine();
+          cw.WriteLine("{");
+        }
         cw.addIndent();
       }
       ~Scope() {
@@ -1544,85 +1623,89 @@ namespace csharp {
       }
     };
 
-    CodeWriter(cstringref filename, char indent = ' ', int indentSize = 4)
+    CodeWriter(cstringref filename)
       : filename_(filename)
-      , indent_(indent, indentSize)
-      , indentSize_(0)
+      , indent_(1, '\t')
+      , sameLineSemiColon_(true)
+      , isNewLine_(true)
     {}
     ~CodeWriter() {
       SaveFile(filename_.c_str(), ss_.str(), false);
     }
 
-    void addIndent() {
-      indentSize_ += indent_.size_;
-      currentIndent_ = std::string(indentSize_, indent_.char_);
-    }
-    void subIndent() {
-      indentSize_ -= indent_.size_;
-      currentIndent_ = std::string(indentSize_, indent_.char_);
-    }
-    Scope PushScope(bool withSemiColon) {
-      return Scope(*this, withSemiColon);
-    }
-    Scope PushNamespace(cstringref ns) {
-      WriteLine("namespace {}.rw", ns);
-      return PushScope(false);
+    void SetIndentStyle(char indent, int indentSize, bool sameLineSemiColon) {
+      indent_.assign(indentSize, indent);
+      sameLineSemiColon_ = sameLineSemiColon;
     }
 
-    Scope WriteLineAndPushScope(bool withSemiColon, cstringref line) {
-      WriteLine(line);
-      return Scope(*this, withSemiColon);
+    void addIndent() {
+      currentIndent_ += indent_;
+    }
+    void subIndent() {
+      currentIndent_ = currentIndent_.substr(0, currentIndent_.size() - indent_.size());
+    }
+    Scope PushScope(bool withSemiColon = false) {
+      return Scope(*this, withSemiColon, sameLineSemiColon_);
+    }
+    Scope PushNamespace(cstringref ns) {
+      Write("namespace {}.rw", ns);
+      return PushScope();
+    }
+
+    Scope WriteLineAndPushScope(cstringref line) {
+      Write(line);
+      return PushScope();
+    }
+    void Write(cstringref line) {
+      if (isNewLine_) {
+        printf("%s", currentIndent_.c_str());
+        ss_ << currentIndent_;
+        isNewLine_ = false;
+      }
+      printf("%s", line.c_str());
+      ss_ << line;
+    }
+    void Write(cstringref fmt, cstringref a0) {
+      Write(fmt::format(fmt, a0));
+    }
+    void Write(cstringref fmt, cstringref a0, cstringref a1) {
+      Write(fmt::format(fmt, a0, a1));
+    }
+    void Write(cstringref fmt, cstringref a0, cstringref a1, cstringref a2) {
+      Write(fmt::format(fmt, a0, a1, a2));
+    }
+    void Write(cstringref fmt, cstringref a0, cstringref a1, cstringref a2, cstringref a3) {
+      Write(fmt::format(fmt, a0, a1, a2, a3));
     }
 
     void WriteLine() {
       ss_ << std::endl;
+      //printf("\n");
+      isNewLine_ = true;
     }
 
     void WriteLine(cstringref line) {
-      ss_ << currentIndent_ << line << std::endl;
-    }
-    template<size_t N>
-    void WriteLine(cstringref fmt, cstringptr(&args)[N]) {
-      std::stringstream ss;
-      size_t off = 0;
-      size_t argIndex = 0;
-      while (true) {
-        auto match = fmt.find("{}", off);
-        if (match == std::string::npos) {
-          ss << fmt.substr(off);
-          break;
-        }
-        ss << fmt.substr(off, match - off);
-        ss << *(args[argIndex++]);
-        off = match + 2;
+      if (isNewLine_ && !line.empty()) {
+        //printf("%s", currentIndent_.c_str());
+        ss_ << currentIndent_;
       }
-      WriteLine(ss.str());
+      //printf("%s\n", line.c_str());
+      ss_ << line;
+      WriteLine();
     }
     void WriteLine(cstringref fmt, cstringref a0) {
-      cstringptr args[] = { &a0 };
-      WriteLine(fmt, args);
+      WriteLine(fmt::format(fmt, a0));
     }
     void WriteLine(cstringref fmt, cstringref a0, cstringref a1) {
-      cstringptr args[] = { &a0, &a1 };
-      WriteLine(fmt, args);
+      WriteLine(fmt::format(fmt, a0, a1));
     }
     void WriteLine(cstringref fmt, cstringref a0, cstringref a1, cstringref a2) {
-      cstringptr args[] = { &a0, &a1, &a2 };
-      WriteLine(fmt, args);
+      WriteLine(fmt::format(fmt, a0, a1, a2));
     }
     void WriteLine(cstringref fmt, cstringref a0, cstringref a1, cstringref a2, cstringref a3) {
-      cstringptr args[] = { &a0, &a1, &a2, &a3 };
-      WriteLine(fmt, args);
+      WriteLine(fmt::format(fmt, a0, a1, a2, a3));
     }
-
-    friend CodeWriter& operator<<(CodeWriter& cw, const std::string& s);
   };
-  const std::string CodeWriter::endl("\n");
-
-  CodeWriter& operator<<(CodeWriter& cw, const std::string& s) {
-    cw.WriteLine(s);
-    return cw;
-  }
 
   class CSharpGenerator : public general::GeneralGenerator {
   public:
@@ -1631,6 +1714,7 @@ namespace csharp {
       : GeneralGenerator(parser, path, file_name) {}
 
     CSharpGenerator &operator=(const CSharpGenerator &);
+
     bool generate() {
       CodeWriter cw(file_name_ + ".rw.cs");
       cw.WriteLine("//this file is generated, do not modify!");
@@ -1640,35 +1724,241 @@ namespace csharp {
       cw.WriteLine("using FlatBuffers;");
       cw.WriteLine();
 
-      for (auto it = parser_.enums_.vec.begin(); it != parser_.enums_.vec.end();
+#define _CONCAT(x, y) x ## y
+#define CONCAT(x, y)  _CONCAT(x, y)
+#define USING(x)      auto CONCAT(counter, __COUNTER__) = x;
+      
+      for (auto it = parser_.enums_.vec.cbegin(); it != parser_.enums_.vec.cend();
         ++it) {
-        auto &enum_def = **it;
-      }
+        const auto&enum_def = **it;
+        const auto& clsName = enum_def.name;
+        auto baseClsName = enum_def.GetFullyQualifiedName();
 
-      for (auto it = parser_.structs_.vec.begin();
-        it != parser_.structs_.vec.end(); ++it) {
-        auto &struct_def = **it;
-        {
-          auto s = cw.PushNamespace(struct_def.GetFullyQualifiedNamespace());
-          cw.WriteLine("public partial class {}", struct_def.name);
-          {
-            auto s1 = cw.PushScope(true);
-            for (const auto& field : struct_def.fields.vec) {
-              cw.WriteLine("{} {} {} {}", field->name, field->name, field->name, field->name);
+        if (enum_def.is_union) {
+          const auto& enumType = clsName;
+          { USING(cw.PushNamespace(enum_def.GetFullyQualifiedNamespace()))
+            { USING(cw.WriteLineAndPushScope(fmt::format("public struct {}Union", clsName))) 
+              cw.WriteLine("public object Self { get; private set; }");
+              cw.WriteLine("public {} Type {{ get; private set; }}", enumType);
+              cw.WriteLine();
+              cw.WriteLine("void Set(object self, {} type) {{ Self = self; Type = type; }}", enumType);
+              cw.WriteLine();
+
+              std::vector<std::string> getters, setters, writers;
+              const auto &union_types = enum_def.vals.vec;
+              for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
+                auto &union_type = *ut;
+                {//if (union_type->union_type.base_type == BASE_TYPE_STRUCT) {
+                  const auto& propName = union_type->name;
+                  if (propName == "NONE" || propName == "COUNT") continue;
+                  getters.push_back(fmt::format("public {} Get{}() => ({})Self;", propName, propName, propName));
+                  setters.push_back(fmt::format("public void Set({} self) => Set(self, {}.{});", propName, enumType, propName));
+                  writers.push_back(fmt::format("case {}.{}: return Get{}().Write(builder).Value;", enumType, propName, propName));
+                }
+              }
+              writers.push_back("default: return 0;");
+
+              for (const auto& getter : getters) {
+                cw.WriteLine(getter);
+              }
+              cw.WriteLine();
+              for (const auto& setter : setters) {
+                cw.WriteLine(setter);
+              }
+              cw.WriteLine();
+              { USING (cw.WriteLineAndPushScope("public int Write(FlatBufferBuilder builder)")) 
+                { USING (cw.WriteLineAndPushScope("switch (Type) "))
+                  for (const auto& writer : writers) {
+                    cw.WriteLine(writer);
+                  }
+                }
+              }
             }
           }
           cw.WriteLine();
         }
       }
+
+      for (auto it = parser_.structs_.vec.begin();
+        it != parser_.structs_.vec.end(); ++it) {
+        auto &struct_def = **it;
+        auto clsName = struct_def.name;
+        auto baseClsName = struct_def.GetFullyQualifiedName();
+        
+        { USING(cw.PushNamespace(struct_def.GetFullyQualifiedNamespace()))
+          { USING(cw.WriteLineAndPushScope(fmt::format("public partial class {}", clsName))) 
+            for (const FieldDef* fieldIt : struct_def.fields.vec) {
+              WriteField(cw, *fieldIt);
+            }
+            
+            cw.WriteLine();
+            { USING (cw.WriteLineAndPushScope(fmt::format("public Offset<{}> Write(FlatBufferBuilder builder)", baseClsName))) 
+              if (struct_def.fixed) {
+                cw.Write(fmt::format("return {baseClsName}.Create{clsName}(builder", baseClsName, clsName));
+                for (const FieldDef* fieldIt : struct_def.fields.vec) {
+                  cw.Write(", {property.Key}", fieldIt->name);
+                }
+                cw.WriteLine(");");
+                continue;
+              } 
+              
+              std::vector<std::string> postStartLines;
+              for (const auto& fieldIt : struct_def.fields.vec) {
+                auto &field = *fieldIt;
+                if (fieldIt->deprecated)
+                  continue;
+                std::string propertyName = field.name;
+                std::string propertyType = GetName(field.value.type);
+                
+                std::string varName = fmt::format("off{}", propertyName);
+                std::string postStartLine;
+
+                if (field.value.type.base_type == BASE_TYPE_UNION) {
+                  cw.WriteLine(fmt::format("var {} = {}.Write(builder);", varName, propertyName));
+                }
+                else if (field.value.type.base_type == BASE_TYPE_STRUCT) {
+                  cw.WriteLine("var {} = {}.Write(builder);", varName, propertyName);
+                }
+                else if (field.value.type.base_type == BASE_TYPE_VECTOR) {
+                  Type elemType = field.value.type.VectorType();
+
+                  if (elemType.struct_def != nullptr) {
+                    cw.WriteLine("var array{} = new Offset<{}>[{}.Count];", propertyName, elemType.struct_def->GetFullyQualifiedName(), propertyName);
+                    { USING (cw.WriteLineAndPushScope(fmt::format("for (int i{} = 0; i{} < {}.Count; ++i{})", propertyName, propertyName, propertyName, propertyName)))
+                      if (!elemType.struct_def->has_key)
+                        cw.WriteLine("array{}[i{}] = {}[i{}].Write(builder);", propertyName, propertyName, propertyName, propertyName);
+                      else //improve .Values.ToList()
+                        cw.WriteLine("array{}[i{}] = {}.Values.ToList()[i{}].Write(builder);", propertyName, propertyName, propertyName, propertyName);
+                    }
+                    cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, array{propertyName});", varName, baseClsName, propertyName, propertyName);
+                  }
+                  else if (elemType.base_type == BASE_TYPE_STRING) {
+                    cw.WriteLine("var array{} = new StringOffset[{}.Count];", propertyName, propertyName);
+                    { USING (cw.WriteLineAndPushScope(fmt::format("for (int i{propertyName} = 0; i{propertyName} < {propertyName}.Count; ++i{propertyName})", propertyName, propertyName, propertyName, propertyName))) 
+                      cw.WriteLine("array{propertyName}[i{propertyName}] = builder.CreateString({propertyName}[i{propertyName}]);", propertyName, propertyName, propertyName, propertyName);
+                    }
+                    cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, array{propertyName});", varName, baseClsName, propertyName, propertyName);
+                  }
+                  else {
+                    cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, {propertyName}.ToArray());", varName, baseClsName, propertyName, propertyName);
+                  }
+                }
+                else if (field.value.type.base_type == BASE_TYPE_STRING) {
+                  cw.WriteLine("var {varName} = builder.CreateString({propertyName});", varName, propertyName);
+                }
+                else if (field.value.type.struct_def != nullptr) {
+                  cw.WriteLine("var {varName} = {propertyName}.Write(builder);", varName, propertyName);
+                }
+                else {
+                  if (fmt::ends_with(propertyName, "_type"))
+                    postStartLine = fmt::format("{baseClsName}.Add{propertyName.Replace(\"_type\", \"Type\")}(builder, {propertyName});", baseClsName, fmt::replace(propertyName, "_type", "Type"), propertyName);
+                  else
+                    postStartLine = fmt::format("{baseClsName}.Add{propertyName}(builder, {propertyName});", baseClsName, propertyName, propertyName);
+                }
+                if (postStartLine.empty())
+                  postStartLine = fmt::format("{}.Add{}(builder, {});", baseClsName, propertyName, varName);
+                postStartLines.push_back(postStartLine);
+              }
+
+              cw.WriteLine("{}.Start{}(builder);", baseClsName, clsName);
+              for (const auto& line : postStartLines) { 
+                cw.WriteLine(line); 
+              }
+              cw.WriteLine("return {}.End{}(builder);", baseClsName, clsName);
+            }
+          }
+        }
+        cw.WriteLine();
+      }
+      
+#undef USING
+#undef CONCAT
+#undef _CONCAT
       return true;
+    }
+    static std::string GetName(const Type& type) {
+      static const char * const csharp_typename[] = {
+#define FLATBUFFERS_TD(ENUM, IDLTYPE, \
+        CTYPE, JTYPE, GTYPE, NTYPE, PTYPE, RTYPE) \
+        #NTYPE,
+        FLATBUFFERS_GEN_TYPES(FLATBUFFERS_TD)
+#undef FLATBUFFERS_TD
+      };
+      if (type.enum_def != nullptr) {
+        return type.enum_def->name;
+      }
+      else if (IsScalar(type.base_type)) {
+        return csharp_typename[type.base_type];
+      }
+      else if (type.base_type == BASE_TYPE_VECTOR) {
+        if (type.struct_def != nullptr)
+          return type.struct_def->name;
+        else
+          return csharp_typename[type.element];
+      }
+      else if (type.base_type == BASE_TYPE_UNION) {
+        return "union";
+      }
+      else if (type.base_type == BASE_TYPE_STRUCT) {
+        return type.struct_def->name;
+      }
+      else if (type.base_type == BASE_TYPE_STRING) {
+        return "string";
+      }
+      else if (type.base_type == BASE_TYPE_UTYPE || type.base_type == BASE_TYPE_NONE) {
+        return "none";
+      }
+      else {
+        return "table";
+      }
+    }
+
+    void WriteField(CodeWriter& cw, const FieldDef& field) {
+      if (field.deprecated)
+        return;
+      const auto& fieldType = field.value.type;
+      std::string visibility = "public";
+      const auto& propertyName = field.name;
+      const auto& propertyType = GetName(fieldType);
+
+      if (fieldType.base_type == BASE_TYPE_VECTOR) {
+        Type valueType = fieldType.VectorType();
+        auto valueTypeNameRaw = GetName(valueType);
+        std::string containerType;
+
+        if (valueType.struct_def == nullptr || !valueType.struct_def->has_key) {
+          containerType = fmt::format("List<{}>", valueTypeNameRaw);
+        }
+        else {
+          const auto& keyField = *valueType.struct_def->GetKeyField();
+          std::string keyTypeNameRaw = GetName(keyField.value.type);
+          containerType = fmt::format("Dictionary<{}, {}>", keyTypeNameRaw, valueTypeNameRaw);
+        }
+        cw.WriteLine("{} {} {} {{ get; private set; }} = new {}();", visibility, containerType, propertyName, containerType);
+      }
+      else if (fieldType.base_type == BASE_TYPE_UNION) {
+        cw.WriteLine("{} {}Union {} {{ get; }} = new {}Union();", visibility, propertyType, propertyName, propertyType);
+      }
+      else if (fmt::ends_with(propertyName, "_type")) {
+        cw.WriteLine("{} {} {} => {}.Type;", visibility, propertyType, propertyName, propertyName.substr(0, propertyName.find('_')));
+      }
+      else {
+        cw.WriteLine("{} {} {} {{ get; set; }}", visibility, propertyType, propertyName);
+      }
     }
   };
 }
 
 bool GenerateGeneral(const Parser &parser, const std::string &path,
                      const std::string &file_name) {
-  csharp::CSharpGenerator generator(parser, path, file_name);
-  return generator.generate();
+  
+  general::GeneralGenerator generator(parser, path, file_name);
+  bool isOk = generator.generate();
+  if (isOk && parser.opts.generate_object_based_api) {
+    csharp::CSharpGenerator csharpGenerator(parser, path, file_name);
+    isOk &= csharpGenerator.generate();
+  }
+  return isOk;
 }
 
 std::string GeneralMakeRule(const Parser &parser, const std::string &path,

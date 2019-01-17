@@ -1658,11 +1658,11 @@ namespace csharp {
     }
     void Write(cstringref line) {
       if (isNewLine_) {
-        printf("%s", currentIndent_.c_str());
+        //printf("%s", currentIndent_.c_str());
         ss_ << currentIndent_;
         isNewLine_ = false;
       }
-      printf("%s", line.c_str());
+      //printf("%s", line.c_str());
       ss_ << line;
     }
     void Write(cstringref fmt, cstringref a0) {
@@ -1714,9 +1714,13 @@ namespace csharp {
       : GeneralGenerator(parser, path, file_name) {}
 
     CSharpGenerator &operator=(const CSharpGenerator &);
+    bool isExclusive(const std::string& path) const {
+      std::string refPath = "/" + file_name_ + ".fbs";
+      return path.find(refPath) != std::string::npos;
+    }
 
     bool generate() {
-      CodeWriter cw(file_name_ + ".rw.cs");
+      CodeWriter cw(path_ + file_name_ + ".rw.cs");
       cw.WriteLine("//this file is generated, do not modify!");
       cw.WriteLine("using System;");
       cw.WriteLine("using System.Collections.Generic;");
@@ -1731,6 +1735,10 @@ namespace csharp {
       for (auto it = parser_.enums_.vec.cbegin(); it != parser_.enums_.vec.cend();
         ++it) {
         const auto&enum_def = **it;
+
+        if (!isExclusive(enum_def.file))
+          continue;
+
         const auto& clsName = enum_def.name;
         auto baseClsName = enum_def.GetFullyQualifiedName();
 
@@ -1782,6 +1790,8 @@ namespace csharp {
       for (auto it = parser_.structs_.vec.begin();
         it != parser_.structs_.vec.end(); ++it) {
         auto &struct_def = **it;
+        if (!isExclusive(struct_def.file))
+          continue;
         auto clsName = struct_def.name;
         auto baseClsName = struct_def.GetFullyQualifiedName();
         

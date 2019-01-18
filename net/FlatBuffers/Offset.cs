@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+using System;
+using System.Collections.Generic;
+
 namespace FlatBuffers
 {
     /// <summary>
@@ -43,6 +46,58 @@ namespace FlatBuffers
         public VectorOffset(int value)
         {
             Value = value;
+        }
+    }
+
+    public class FlatAttribute : Attribute
+    {
+        Dictionary<string, object> custom;
+        public FlatAttribute(Dictionary<string, object> custom = null)
+        {
+            this.custom = custom;
+        }
+    }
+
+    public class FlatFieldAttribute : FlatAttribute
+    {
+        int id; //table field
+        bool deprecated; //field
+        bool required; //non-scalar table field
+        bool key;//field
+
+        public FlatFieldAttribute(int id = -1, bool deprecated = false, bool required = false, bool key = false, Dictionary<string, object> custom = null) : base(custom)
+        {
+            this.id = id;
+            this.deprecated = deprecated;
+            this.required = required;
+            this.key = key;
+        }
+    }
+
+    public class FlatEnumAttribute : FlatAttribute
+    {
+        int bitFlag;
+        public FlatEnumAttribute(int bitFlag = 1, Dictionary<string, object> custom = null) : base(custom)
+        {
+            this.bitFlag = bitFlag;
+        }
+    }
+
+    public class FlatTableAttribute : FlatAttribute
+    {
+        bool originalOrder;
+        public FlatTableAttribute(bool originalOrder, Dictionary<string, object> custom = null) : base(custom)
+        {
+            this.originalOrder = originalOrder;
+        }
+    }
+
+    public class FlatStructAttribute : FlatAttribute
+    {
+        int forceAlign;
+        public FlatStructAttribute(int forceAlign = 0, Dictionary<string, object> custom = null) : base(custom)
+        {
+            this.forceAlign = forceAlign;
         }
     }
 }

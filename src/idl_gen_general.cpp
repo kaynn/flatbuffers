@@ -1725,13 +1725,14 @@ namespace csharp {
       cw.WriteLine("using System;");
       cw.WriteLine("using System.Collections.Generic;");
       cw.WriteLine("using System.Linq;");
+      cw.WriteLine();
       cw.WriteLine("using FlatBuffers;");
       cw.WriteLine();
 
 #define _CONCAT(x, y) x ## y
 #define CONCAT(x, y)  _CONCAT(x, y)
 #define USING(x)      auto CONCAT(counter, __COUNTER__) = x;
-      
+      cw.WriteLine("//unions");
       for (auto it = parser_.enums_.vec.cbegin(); it != parser_.enums_.vec.cend();
         ++it) {
         const auto&enum_def = **it;
@@ -1752,28 +1753,35 @@ namespace csharp {
               cw.WriteLine("void Set(object self, {} type) {{ Self = self; Type = type; }}", enumType);
               cw.WriteLine();
 
-              std::vector<std::string> getters, setters, writers;
+              std::vector<std::string> writers; //getters, setters, 
               const auto &union_types = enum_def.vals.vec;
               for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
                 auto &union_type = *ut;
                 {//if (union_type->union_type.base_type == BASE_TYPE_STRUCT) {
                   const auto& propName = union_type->name;
                   if (propName == "NONE" || propName == "COUNT") continue;
-                  getters.push_back(fmt::format("public {} Get{}() => ({})Self;", propName, propName, propName));
-                  setters.push_back(fmt::format("public void Set({} self) => Set(self, {}.{});", propName, enumType, propName));
-                  writers.push_back(fmt::format("case {}.{}: return Get{}().Write(builder).Value;", enumType, propName, propName));
+                  cw.WriteLine("public {} {} {{", propName, propName);
+                  cw.addIndent();
+                  cw.WriteLine("get => ({})Self;", propName);
+                  cw.WriteLine("set => Set(value, {}.{});", enumType, propName);
+                  cw.subIndent();
+                  cw.WriteLine("}");
+                  //getters.push_back(fmt::format("public {} Get{}() => ({})Self;", propName, propName, propName));
+                  //setters.push_back(fmt::format("public void Set({} self) => Set(self, {}.{});", propName, enumType, propName));
+                  writers.push_back(fmt::format("case {}.{}: return {}.Write(builder).Value;", enumType, propName, propName));
                 }
               }
               writers.push_back("default: return 0;");
 
-              for (const auto& getter : getters) {
-                cw.WriteLine(getter);
-              }
+              //for (const auto& getter : getters) {
+              //  cw.WriteLine(getter);
+              //}
+              //cw.WriteLine();
+              //for (const auto& setter : setters) {
+              //  cw.WriteLine(setter);
+              //}
               cw.WriteLine();
-              for (const auto& setter : setters) {
-                cw.WriteLine(setter);
-              }
-              cw.WriteLine();
+              cw.WriteLine("#region read/write");
               { USING (cw.WriteLineAndPushScope("public int Write(FlatBufferBuilder builder)")) 
                 { USING (cw.WriteLineAndPushScope("switch (Type) "))
                   for (const auto& writer : writers) {
@@ -1781,12 +1789,14 @@ namespace csharp {
                   }
                 }
               }
+              cw.WriteLine("#endregion");
             }
           }
           cw.WriteLine();
         }
       }
 
+      cw.WriteLine("//structs & tables");
       for (auto it = parser_.structs_.vec.begin();
         it != parser_.structs_.vec.end(); ++it) {
         auto &struct_def = **it;
@@ -1802,80 +1812,84 @@ namespace csharp {
             }
             
             cw.WriteLine();
-            { USING (cw.WriteLineAndPushScope(fmt::format("public Offset<{}> Write(FlatBufferBuilder builder)", baseClsName))) 
+            cw.WriteLine("#region read/write");
+            { USING(cw.WriteLineAndPushScope(fmt::format("public Offset<{}> Write(FlatBufferBuilder builder)", baseClsName)))
               if (struct_def.fixed) {
                 cw.Write(fmt::format("return {baseClsName}.Create{clsName}(builder", baseClsName, clsName));
                 for (const FieldDef* fieldIt : struct_def.fields.vec) {
                   cw.Write(", {property.Key}", fieldIt->name);
                 }
                 cw.WriteLine(");");
-                continue;
-              } 
-              
-              std::vector<std::string> postStartLines;
-              for (const auto& fieldIt : struct_def.fields.vec) {
-                auto &field = *fieldIt;
-                if (fieldIt->deprecated)
-                  continue;
-                std::string propertyName = field.name;
-                std::string propertyType = GetName(field.value.type);
-                
-                std::string varName = fmt::format("off{}", propertyName);
-                std::string postStartLine;
+              }
+              else {
 
-                if (field.value.type.base_type == BASE_TYPE_UNION) {
-                  cw.WriteLine(fmt::format("var {} = {}.Write(builder);", varName, propertyName));
-                }
-                else if (field.value.type.base_type == BASE_TYPE_STRUCT) {
-                  cw.WriteLine("var {} = {}.Write(builder);", varName, propertyName);
-                }
-                else if (field.value.type.base_type == BASE_TYPE_VECTOR) {
-                  Type elemType = field.value.type.VectorType();
 
-                  if (elemType.struct_def != nullptr) {
-                    cw.WriteLine("var array{} = new Offset<{}>[{}.Count];", propertyName, elemType.struct_def->GetFullyQualifiedName(), propertyName);
-                    { USING (cw.WriteLineAndPushScope(fmt::format("for (int i{} = 0; i{} < {}.Count; ++i{})", propertyName, propertyName, propertyName, propertyName)))
-                      if (!elemType.struct_def->has_key)
-                        cw.WriteLine("array{}[i{}] = {}[i{}].Write(builder);", propertyName, propertyName, propertyName, propertyName);
-                      else //improve .Values.ToList()
-                        cw.WriteLine("array{}[i{}] = {}.Values.ToList()[i{}].Write(builder);", propertyName, propertyName, propertyName, propertyName);
-                    }
-                    cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, array{propertyName});", varName, baseClsName, propertyName, propertyName);
+                std::vector<std::string> postStartLines;
+                for (const auto& fieldIt : struct_def.fields.vec) {
+                  auto &field = *fieldIt;
+                  if (fieldIt->deprecated)
+                    continue;
+                  std::string propertyName = field.name;
+                  std::string propertyType = GetName(field.value.type);
+
+                  std::string varName = fmt::format("off{}", propertyName);
+                  std::string postStartLine;
+
+                  if (field.value.type.base_type == BASE_TYPE_UNION) {
+                    cw.WriteLine(fmt::format("var {} = {}.Write(builder);", varName, propertyName));
                   }
-                  else if (elemType.base_type == BASE_TYPE_STRING) {
-                    cw.WriteLine("var array{} = new StringOffset[{}.Count];", propertyName, propertyName);
-                    { USING (cw.WriteLineAndPushScope(fmt::format("for (int i{propertyName} = 0; i{propertyName} < {propertyName}.Count; ++i{propertyName})", propertyName, propertyName, propertyName, propertyName))) 
-                      cw.WriteLine("array{propertyName}[i{propertyName}] = builder.CreateString({propertyName}[i{propertyName}]);", propertyName, propertyName, propertyName, propertyName);
+                  else if (field.value.type.base_type == BASE_TYPE_STRUCT) {
+                    cw.WriteLine("var {} = {}.Write(builder);", varName, propertyName);
+                  }
+                  else if (field.value.type.base_type == BASE_TYPE_VECTOR) {
+                    Type elemType = field.value.type.VectorType();
+
+                    if (elemType.struct_def != nullptr) {
+                      cw.WriteLine("var array{} = new Offset<{}>[{}.Count];", propertyName, elemType.struct_def->GetFullyQualifiedName(), propertyName);
+                      { USING(cw.WriteLineAndPushScope(fmt::format("for (int i{} = 0; i{} < {}.Count; ++i{})", propertyName, propertyName, propertyName, propertyName)))
+                        if (!elemType.struct_def->has_key)
+                          cw.WriteLine("array{}[i{}] = {}[i{}].Write(builder);", propertyName, propertyName, propertyName, propertyName);
+                        else //improve .Values.ToList()
+                          cw.WriteLine("array{}[i{}] = {}.Values.ToList()[i{}].Write(builder);", propertyName, propertyName, propertyName, propertyName);
+                      }
+                      cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, array{propertyName});", varName, baseClsName, propertyName, propertyName);
                     }
-                    cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, array{propertyName});", varName, baseClsName, propertyName, propertyName);
+                    else if (elemType.base_type == BASE_TYPE_STRING) {
+                      cw.WriteLine("var array{} = new StringOffset[{}.Count];", propertyName, propertyName);
+                      { USING(cw.WriteLineAndPushScope(fmt::format("for (int i{propertyName} = 0; i{propertyName} < {propertyName}.Count; ++i{propertyName})", propertyName, propertyName, propertyName, propertyName)))
+                        cw.WriteLine("array{propertyName}[i{propertyName}] = builder.CreateString({propertyName}[i{propertyName}]);", propertyName, propertyName, propertyName, propertyName);
+                      }
+                      cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, array{propertyName});", varName, baseClsName, propertyName, propertyName);
+                    }
+                    else {
+                      cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, {propertyName}.ToArray());", varName, baseClsName, propertyName, propertyName);
+                    }
+                  }
+                  else if (field.value.type.base_type == BASE_TYPE_STRING) {
+                    cw.WriteLine("var {varName} = builder.CreateString({propertyName});", varName, propertyName);
+                  }
+                  else if (field.value.type.struct_def != nullptr) {
+                    cw.WriteLine("var {varName} = {propertyName}.Write(builder);", varName, propertyName);
                   }
                   else {
-                    cw.WriteLine("var {varName} = {baseClsName}.Create{propertyName}Vector(builder, {propertyName}.ToArray());", varName, baseClsName, propertyName, propertyName);
+                    if (fmt::ends_with(propertyName, "_type"))
+                      postStartLine = fmt::format("{baseClsName}.Add{propertyName.Replace(\"_type\", \"Type\")}(builder, {propertyName});", baseClsName, fmt::replace(propertyName, "_type", "Type"), propertyName);
+                    else
+                      postStartLine = fmt::format("{baseClsName}.Add{propertyName}(builder, {propertyName});", baseClsName, propertyName, propertyName);
                   }
+                  if (postStartLine.empty())
+                    postStartLine = fmt::format("{}.Add{}(builder, {});", baseClsName, propertyName, varName);
+                  postStartLines.push_back(postStartLine);
                 }
-                else if (field.value.type.base_type == BASE_TYPE_STRING) {
-                  cw.WriteLine("var {varName} = builder.CreateString({propertyName});", varName, propertyName);
-                }
-                else if (field.value.type.struct_def != nullptr) {
-                  cw.WriteLine("var {varName} = {propertyName}.Write(builder);", varName, propertyName);
-                }
-                else {
-                  if (fmt::ends_with(propertyName, "_type"))
-                    postStartLine = fmt::format("{baseClsName}.Add{propertyName.Replace(\"_type\", \"Type\")}(builder, {propertyName});", baseClsName, fmt::replace(propertyName, "_type", "Type"), propertyName);
-                  else
-                    postStartLine = fmt::format("{baseClsName}.Add{propertyName}(builder, {propertyName});", baseClsName, propertyName, propertyName);
-                }
-                if (postStartLine.empty())
-                  postStartLine = fmt::format("{}.Add{}(builder, {});", baseClsName, propertyName, varName);
-                postStartLines.push_back(postStartLine);
-              }
 
-              cw.WriteLine("{}.Start{}(builder);", baseClsName, clsName);
-              for (const auto& line : postStartLines) { 
-                cw.WriteLine(line); 
+                cw.WriteLine("{}.Start{}(builder);", baseClsName, clsName);
+                for (const auto& line : postStartLines) {
+                  cw.WriteLine(line);
+                }
+                cw.WriteLine("return {}.End{}(builder);", baseClsName, clsName);
               }
-              cw.WriteLine("return {}.End{}(builder);", baseClsName, clsName);
             }
+            cw.WriteLine("#endregion");
           }
         }
         cw.WriteLine();

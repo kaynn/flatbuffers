@@ -159,63 +159,48 @@ namespace FlatBuffers
     /// </summary>
     public class ByteBuffer : IDisposable
     {
-        private ByteBufferAllocator _buffer;
-        private int _pos;  // Must track start of the buffer.
+        ByteBufferAllocator Buffer { get; set; }
+        public int Position { get; set; }
+        Dictionary<int, string> Strings { get; } = new Dictionary<int, string>();
 
         public ByteBuffer(ByteBufferAllocator allocator, int position)
         {
-            _buffer = allocator;
-            _pos = position;
+            Buffer = allocator;
+            Position = position;
         }
 
         public ByteBuffer(int size) : this(new byte[size]) { }
-
         public ByteBuffer(byte[] buffer) : this(buffer, 0) { }
 
         public ByteBuffer(byte[] buffer, int pos)
         {
-            _buffer = new ByteArrayAllocator(buffer);
-            _pos = pos;
+            Buffer = new ByteArrayAllocator(buffer);
+            Position = pos;
         }
 
         public void Dispose()
         {
-            if (_buffer != null)
+            Strings?.Clear();
+            if (Buffer != null)
             {
-                _buffer.Dispose();
+                Buffer.Dispose();
             }
         }
 
-        public int Position {
-            get { return _pos; }
-            set { _pos = value; }
-        }
 
-        public int Length { get { return _buffer.Length; } }
+        public int Length => Buffer.Length;
 
-        public void Reset()
-        {
-            _pos = 0;
-        }
+        public void Reset() => Position = 0;
 
         // Create a new ByteBuffer on the same underlying data.
         // The new ByteBuffer's position will be same as this buffer's.
-        public ByteBuffer Duplicate()
-        {
-            return new ByteBuffer(_buffer, Position);
-        }
+        public ByteBuffer Duplicate() => new ByteBuffer(Buffer, Position);
 
         // Increases the size of the ByteBuffer, and copies the old data towards
         // the end of the new buffer.
-        public void GrowFront(int newSize)
-        {
-            _buffer.GrowFront(newSize);
-        }
+        public void GrowFront(int newSize) => Buffer.GrowFront(newSize);
 
-        public byte[] ToArray(int pos, int len)
-        {
-            return ToArray<byte>(pos, len);
-        }
+        public byte[] ToArray(int pos, int len) => ToArray<byte>(pos, len);
 
         /// <summary>
         /// A lookup of type sizes. Used instead of Marshal.SizeOf() which has additional
@@ -241,10 +226,7 @@ namespace FlatBuffers
         /// </summary>
         /// <param name="t">The type to get the wire size of</param>
         /// <returns></returns>
-        public static int SizeOf<T>()
-        {
-            return genericSizes[typeof(T)];
-        }
+        public static int SizeOf<T>() => genericSizes[typeof(T)];
 
         /// <summary>
         /// Checks if the Type provided is supported as scalar value
@@ -262,10 +244,7 @@ namespace FlatBuffers
         /// <typeparam name="T">The type of the array</typeparam>
         /// <param name="x">The array to get the size of</param>
         /// <returns>The number of bytes the array takes on wire</returns>
-        public static int ArraySize<T>(T[] x)
-        {
-            return SizeOf<T>() * x.Length;
-        }
+        public static int ArraySize<T>(T[] x) => SizeOf<T>() * x.Length;
 
 #if ENABLE_SPAN_T
         public static int ArraySize<T>(Span<T> x)
@@ -295,7 +274,7 @@ namespace FlatBuffers
         {
             AssertOffsetAndLength(pos, len);
             T[] arr = new T[len];
-            Buffer.BlockCopy(_buffer.ByteArray, pos, arr, 0, ArraySize(arr));
+            System.Buffer.BlockCopy(Buffer.ByteArray, pos, arr, 0, ArraySize(arr));
             return arr;
         }
 #endif
@@ -319,14 +298,14 @@ namespace FlatBuffers
 #else
         public ArraySegment<byte> ToArraySegment(int pos, int len)
         {
-            return new ArraySegment<byte>(_buffer.ByteArray, pos, len);
+            return new ArraySegment<byte>(Buffer.ByteArray, pos, len);
         }
 #endif
 
 #if !ENABLE_SPAN_T
         public MemoryStream ToMemoryStream(int pos, int len)
         {
-            return new MemoryStream(_buffer.ByteArray, pos, len);
+            return new MemoryStream(Buffer.ByteArray, pos, len);
         }
 #endif
 
@@ -371,14 +350,14 @@ namespace FlatBuffers
             {
                 for (int i = 0; i < count; i++)
                 {
-                    _buffer.Buffer[offset + i] = (byte)(data >> i * 8);
+                    Buffer.Buffer[offset + i] = (byte)(data >> i * 8);
                 }
             }
             else
             {
                 for (int i = 0; i < count; i++)
                 {
-                    _buffer.Buffer[offset + count - 1 - i] = (byte)(data >> i * 8);
+                    Buffer.Buffer[offset + count - 1 - i] = (byte)(data >> i * 8);
                 }
             }
         }
@@ -391,14 +370,14 @@ namespace FlatBuffers
             {
                 for (int i = 0; i < count; i++)
                 {
-                  r |= (ulong)_buffer.Buffer[offset + i] << i * 8;
+                  r |= (ulong)Buffer.Buffer[offset + i] << i * 8;
                 }
             }
             else
             {
               for (int i = 0; i < count; i++)
               {
-                r |= (ulong)_buffer.Buffer[offset + count - 1 - i] << i * 8;
+                r |= (ulong)Buffer.Buffer[offset + count - 1 - i] << i * 8;
               }
             }
             return r;
@@ -409,7 +388,7 @@ namespace FlatBuffers
         {
 #if !BYTEBUFFER_NO_BOUNDS_CHECK
             if (offset < 0 ||
-                offset > _buffer.Length - length)
+                offset > Buffer.Length - length)
                 throw new ArgumentOutOfRangeException();
 #endif
         }
@@ -444,20 +423,20 @@ namespace FlatBuffers
         public void PutSbyte(int offset, sbyte value)
         {
             AssertOffsetAndLength(offset, sizeof(sbyte));
-            _buffer.Buffer[offset] = (byte)value;
+            Buffer.Buffer[offset] = (byte)value;
         }
 
         public void PutByte(int offset, byte value)
         {
             AssertOffsetAndLength(offset, sizeof(byte));
-            _buffer.Buffer[offset] = value;
+            Buffer.Buffer[offset] = value;
         }
 
         public void PutByte(int offset, byte value, int count)
         {
             AssertOffsetAndLength(offset, sizeof(byte) * count);
             for (var i = 0; i < count; ++i)
-                _buffer.Buffer[offset + i] = value;
+                Buffer.Buffer[offset + i] = value;
         }
 
         // this method exists in order to conform with Java ByteBuffer standards
@@ -481,7 +460,7 @@ namespace FlatBuffers
         {
             AssertOffsetAndLength(offset, value.Length);
             Encoding.UTF8.GetBytes(value, 0, value.Length,
-                _buffer.ByteArray, offset);
+                Buffer.ByteArray, offset);
         }
 #endif
 
@@ -599,7 +578,7 @@ namespace FlatBuffers
         {
             AssertOffsetAndLength(offset, sizeof(float));
             floathelper[0] = value;
-            Buffer.BlockCopy(floathelper, 0, inthelper, 0, sizeof(float));
+            System.Buffer.BlockCopy(floathelper, 0, inthelper, 0, sizeof(float));
             WriteLittleEndian(offset, sizeof(float), (ulong)inthelper[0]);
         }
 
@@ -607,7 +586,7 @@ namespace FlatBuffers
         {
             AssertOffsetAndLength(offset, sizeof(double));
             doublehelper[0] = value;
-            Buffer.BlockCopy(doublehelper, 0, ulonghelper, 0, sizeof(double));
+            System.Buffer.BlockCopy(doublehelper, 0, ulonghelper, 0, sizeof(double));
             WriteLittleEndian(offset, sizeof(double), ulonghelper[0]);
         }
 
@@ -629,27 +608,36 @@ namespace FlatBuffers
         public sbyte GetSbyte(int index)
         {
             AssertOffsetAndLength(index, sizeof(sbyte));
-            return (sbyte)_buffer.Buffer[index];
+            return (sbyte)Buffer.Buffer[index];
         }
 
         public byte Get(int index)
         {
             AssertOffsetAndLength(index, sizeof(byte));
-            return _buffer.Buffer[index];
+            return Buffer.Buffer[index];
         }
 #endif
 
 #if ENABLE_SPAN_T
         public unsafe string GetStringUTF8(int startPos, int len)
         {
-            return Encoding.UTF8.GetString(_buffer.Buffer + startPos, len);
+            if(!Strings.TryGetValue(startPos, out string val))
+            {
+                Strings[startPos] = val = Encoding.UTF8.GetString(_buffer.Buffer + startPos, len);
+            }
+            return val;
         }
 #else
         public string GetStringUTF8(int startPos, int len)
         {
-            return Encoding.UTF8.GetString(_buffer.ByteArray, startPos, len);
+            if(!Strings.TryGetValue(startPos, out string val))
+            {
+                Strings[startPos] = val = Encoding.UTF8.GetString(Buffer.ByteArray, startPos, len);
+            }
+            return val;
         }
 #endif
+        public void ClearStrings() => Strings.Clear();
 
 #if UNSAFE_BYTEBUFFER
         // Unsafe but more efficient versions of Get*.
@@ -770,7 +758,7 @@ namespace FlatBuffers
         {
             int i = (int)ReadLittleEndian(index, sizeof(float));
             inthelper[0] = i;
-            Buffer.BlockCopy(inthelper, 0, floathelper, 0, sizeof(float));
+            System.Buffer.BlockCopy(inthelper, 0, floathelper, 0, sizeof(float));
             return floathelper[0];
         }
 
@@ -779,7 +767,7 @@ namespace FlatBuffers
             ulong i = ReadLittleEndian(index, sizeof(double));
             // There's Int64BitsToDouble but it uses unsafe code internally.
             ulonghelper[0] = i;
-            Buffer.BlockCopy(ulonghelper, 0, doublehelper, 0, sizeof(double));
+            System.Buffer.BlockCopy(ulonghelper, 0, doublehelper, 0, sizeof(double));
             return doublehelper[0];
         }
 #endif // UNSAFE_BYTEBUFFER
@@ -824,7 +812,7 @@ namespace FlatBuffers
                     MemoryMarshal.Cast<T, byte>(x).CopyTo(new Span<byte>(_buffer.Buffer, _buffer.Length).Slice(offset, numBytes));
                 }
 #else
-                Buffer.BlockCopy(x, 0, _buffer.ByteArray, offset, numBytes);
+                System.Buffer.BlockCopy(x, 0, Buffer.ByteArray, offset, numBytes);
 #endif
             }
             else

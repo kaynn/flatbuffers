@@ -168,6 +168,31 @@ class JsonSchemaGenerator : public BaseGenerator {
 	  std::string refPath = "/" + file_name_ + ".fbs";
 	  return path.find(refPath) != std::string::npos;
   }
+  void writeBasicInfo(const Definition& def, const std::string& indent) {
+	  code_ += indent + "\"exclusiveDefinition\" : " + std::string(isExclusive(def.file) ? "true" : "false") + ",";
+	  if (!def.attributes.dict.empty()) {
+		  code_ += indent + "\"attributes\" : { ";
+		  std::string attributes;
+		  for (auto attr = def.attributes.dict.begin(); attr != def.attributes.dict.end(); ++attr) {
+			  std::string attribute = indent + "  \"" + attr->first + "\": \"" + attr->second->constant + "\"";
+			  if (std::next(attr) != def.attributes.dict.end()) attribute += ", ";
+			  code_ += attribute;
+		  }
+		  code_ += indent + "},";
+	  }
+	  code_ += indent + "\"namespace\" : \"" + def.GetFullyQualifiedNamespace() + "\",";
+	  code_ += indent + "\"name\" : \"" + def.name + "\",";
+	  std::string comment;
+	  const auto &comment_lines = def.doc_comment;
+	  for (auto comment_line = comment_lines.cbegin();
+		  comment_line != comment_lines.cend(); ++comment_line) {
+		  comment.append(*comment_line);
+	  }
+	  if (comment.size() > 0) {
+		  code_ += "      \"description\" : \"" + comment + "\",";
+	  }
+  }
+
   bool generate() {
     code_.Clear();
     code_ += "{";
@@ -181,123 +206,109 @@ class JsonSchemaGenerator : public BaseGenerator {
       code_ += "      \"maximum\": " + ToString(prim.maxValue);
       code_ += "    },";  // close type
     }
-	for (auto prim : DecimalInfos) {
-		code_ += "    \"" + std::string(prim.name()) + "\" : {";
-		code_ += "      \"type\": \"number\",";
-    code_ += "      \"name\": \"" + std::string(prim.name()) + "\",";
-		code_ += "      \"bits\": " + ToString(prim.bits);
-		code_ += "    },";  // close type
-	}
-  for (auto e = parser_.enums_.vec.cbegin(); e != parser_.enums_.vec.cend();
-       ++e) {
-    code_ += "    \"" + GenFullName(*e) + "\" : {";
-    code_ += "      " + GenType("string") + ",";
-	  code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive((*e)->file) ? "true" : "false") + ",";
-	  code_ += "      \"namespace\" : \"" + (*e)->GetFullyQualifiedNamespace() + "\",";
-    code_ += "      \"name\" : \"" + (*e)->name + "\",";
-    code_ += "      \"isEnum\" : \"true\",";
-    std::string enumdef("      \"enum\": [");
-    for (auto enum_value = (*e)->vals.vec.begin();
-         enum_value != (*e)->vals.vec.end(); ++enum_value) {
-      enumdef.append("\"" + (*enum_value)->name + "\"");
-      if (*enum_value != (*e)->vals.vec.back()) { enumdef.append(", "); }
-    }
-    enumdef.append("],");
-    code_ += enumdef;
-    std::string enumvalues("      \"enum_values\": [");
-    for (auto enum_value = (*e)->vals.vec.begin();
-      enum_value != (*e)->vals.vec.end(); ++enum_value) {
-      enumvalues.append(ToString((*enum_value)->value));
-      if (*enum_value != (*e)->vals.vec.back()) { enumvalues.append(", "); }
-    }
-    enumvalues.append("]");
-    code_ += enumvalues;
-    code_ += "    },";  // close type
-
-    if ((*e)->is_union) {
-      auto& enum_def = **e;
-      code_ += "    \"" + GenFullName(*e) + "Union" + "\" : {";
-      code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive((*e)->file) ? "true" : "false") + ",";
-		  code_ += "      \"namespace\" : \"" + (*e)->GetFullyQualifiedNamespace() + "\",";
-      code_ += "      \"name\" : \"" + (*e)->name + "\",";
-      code_ += "      \"isUnion\" : \"true\",";
-      code_ += "      \"anyOf\": [";
-      const auto &union_types = enum_def.vals.vec;
-      for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
-        auto &union_type = *ut;
-        if (union_type->union_type.base_type == BASE_TYPE_NONE) { continue; }
-        if (union_type->union_type.base_type == BASE_TYPE_STRUCT) {
-          std::string elem("        { " + GenTypeRef(union_type->union_type.struct_def) + " }");
-          if (union_type != *enum_def.vals.vec.rbegin()) {
-            elem += ",";
-          }
-          code_ += elem;
-        }
+	  for (auto prim : DecimalInfos) {
+		  code_ += "    \"" + std::string(prim.name()) + "\" : {";
+		  code_ += "      \"type\": \"number\",";
+      code_ += "      \"name\": \"" + std::string(prim.name()) + "\",";
+		  code_ += "      \"bits\": " + ToString(prim.bits);
+		  code_ += "    },";  // close type
+	  }
+    for (auto e = parser_.enums_.vec.cbegin(); e != parser_.enums_.vec.cend();
+         ++e) {
+	    const auto& def = *e;
+      code_ += "    \"" + GenFullName(*e) + "\" : {";
+      code_ += "      " + GenType("string") + ",";
+	    writeBasicInfo(*def, "      ");
+      code_ += "      \"isEnum\" : \"true\",";
+      std::string enumdef("      \"enum\": [");
+      for (auto enum_value = (*e)->vals.vec.begin();
+           enum_value != (*e)->vals.vec.end(); ++enum_value) {
+        enumdef.append("\"" + (*enum_value)->name + "\"");
+        if (*enum_value != (*e)->vals.vec.back()) { enumdef.append(", "); }
       }
-      code_ += "      ]";
+      enumdef.append("],");
+      code_ += enumdef;
+      std::string enumvalues("      \"enum_values\": [");
+      for (auto enum_value = (*e)->vals.vec.begin();
+        enum_value != (*e)->vals.vec.end(); ++enum_value) {
+        enumvalues.append(ToString((*enum_value)->value));
+        if (*enum_value != (*e)->vals.vec.back()) { enumvalues.append(", "); }
+      }
+      enumvalues.append("]");
+      code_ += enumvalues;
       code_ += "    },";  // close type
-    }
-  }
-  for (auto s = parser_.structs_.vec.cbegin();
-        s != parser_.structs_.vec.cend(); ++s) {
-    const auto &structure = *s;
-    code_ += "    \"" + GenFullName(structure) + "\" : {";
-    code_ += "      " + GenType("object") + ",";
-	  code_ += "      \"exclusiveDefinition\" : " + std::string(isExclusive(structure->file) ? "true" : "false") + ",";
-	  code_ += "      \"namespace\" : \"" + structure->GetFullyQualifiedNamespace() + "\",";
-    code_ += "      \"name\" : \"" + structure->name + "\",";
-    std::string comment;
-    const auto &comment_lines = structure->doc_comment;
-    for (auto comment_line = comment_lines.cbegin();
-          comment_line != comment_lines.cend(); ++comment_line) {
-      comment.append(*comment_line);
-    }
-    if (comment.size() > 0) {
-      code_ += "      \"description\" : \"" + comment + "\",";
-    }
-    code_ += "      \"properties\" : {";
 
-    const auto &properties = structure->fields.vec;
-    for (auto prop = properties.cbegin(); prop != properties.cend(); ++prop) {
-      const auto &property = *prop;
-      std::string typeLine("        \"" + property->name + "\" : { " +
-                            GenType(property->value.type) + " }");
-      if (property != properties.back()) { typeLine.append(","); }
-      code_ += typeLine;
-    }
-    code_ += "      },";  // close properties
-    if (structure->has_key) {
-      std::string keyLine("      \"key\" : \"" + structure->GetKeyField()->name + "\",");
-      code_ += keyLine;
-    }
-	  if (structure->fixed) {
-		  code_ += "      \"struct\" : true,";
-    }
-    else {
-      code_ += "      \"table\" : true,";
-    }
-    std::vector<FieldDef *> requiredProperties;
-    std::copy_if(properties.begin(), properties.end(),
-                  back_inserter(requiredProperties),
-                  [](FieldDef const *prop) { return prop->required; });
-    if (requiredProperties.size() > 0) {
-      std::string required_string("      \"required\" : [");
-      for (auto req_prop = requiredProperties.cbegin();
-            req_prop != requiredProperties.cend(); ++req_prop) {
-        required_string.append("\"" + (*req_prop)->name + "\"");
-        if (*req_prop != requiredProperties.back()) {
-          required_string.append(", ");
+      if ((*e)->is_union) {
+        auto& enum_def = **e;
+        code_ += "    \"" + GenFullName(*e) + "Union" + "\" : {";
+	      writeBasicInfo(enum_def, "      ");
+        code_ += "      \"isUnion\" : \"true\",";
+        code_ += "      \"anyOf\": [";
+        const auto &union_types = enum_def.vals.vec;
+        for (auto ut = union_types.cbegin(); ut < union_types.cend(); ++ut) {
+          auto &union_type = *ut;
+          if (union_type->union_type.base_type == BASE_TYPE_NONE) { continue; }
+          if (union_type->union_type.base_type == BASE_TYPE_STRUCT) {
+            std::string elem("        { " + GenTypeRef(union_type->union_type.struct_def) + " }");
+            if (union_type != *enum_def.vals.vec.rbegin()) {
+              elem += ",";
+            }
+            code_ += elem;
+          }
         }
+        code_ += "      ]";
+        code_ += "    },";  // close type
       }
-      required_string.append("],");
-      code_ += required_string;
     }
-	  code_ += "      \"additionalProperties\" : false";
+    for (auto s = parser_.structs_.vec.cbegin();
+          s != parser_.structs_.vec.cend(); ++s) {
+      const auto &structure = *s;
+      code_ += "    \"" + GenFullName(structure) + "\" : {";
+      code_ += "      " + GenType("object") + ",";
+	    writeBasicInfo(*structure, "      ");
+      code_ += "      \"properties\" : {";
+
+      const auto &properties = structure->fields.vec;
+      for (auto prop = properties.cbegin(); prop != properties.cend(); ++prop) {
+        const auto &property = *prop;
+        std::string typeLine("        \"" + property->name + "\" : { " +
+                              GenType(property->value.type) + " }");
+        if (property != properties.back()) { typeLine.append(","); }
+        code_ += typeLine;
+      }
+      code_ += "      },";  // close properties
+      if (structure->has_key) {
+        std::string keyLine("      \"key\" : \"" + structure->GetKeyField()->name + "\",");
+        code_ += keyLine;
+      }
+	    if (structure->fixed) {
+		    code_ += "      \"struct\" : true,";
+      }
+      else {
+        code_ += "      \"table\" : true,";
+      }
+      std::vector<FieldDef *> requiredProperties;
+      std::copy_if(properties.begin(), properties.end(),
+                    back_inserter(requiredProperties),
+                    [](FieldDef const *prop) { return prop->required; });
+      if (requiredProperties.size() > 0) {
+        std::string required_string("      \"required\" : [");
+        for (auto req_prop = requiredProperties.cbegin();
+              req_prop != requiredProperties.cend(); ++req_prop) {
+          required_string.append("\"" + (*req_prop)->name + "\"");
+          if (*req_prop != requiredProperties.back()) {
+            required_string.append(", ");
+          }
+        }
+        required_string.append("],");
+        code_ += required_string;
+      }
+	    code_ += "      \"additionalProperties\" : false";
 	  
-    std::string closeType("    }");
-    if (*s != parser_.structs_.vec.back()) { closeType.append(","); }
-      code_ += closeType;  // close type
-    }
+      std::string closeType("    }");
+      if (*s != parser_.structs_.vec.back()) { closeType.append(","); }
+        code_ += closeType;  // close type
+      }
     code_ += "  },";  // close definitions
 
     // mark root type
